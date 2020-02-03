@@ -2,25 +2,30 @@
 import cv2
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import preprocessing as preproc
+from tensorflow.keras.preprocessing import image as preproc
 
 aug_kwargs = {'row_axis': 0, 'col_axis': 1, 'channel_axis': 2}
 class ImageUtilities:
     
+    
+    # All augmentations should be called for all images.  Must have randomness built-in
     AUGMENTATIONS = {
-        #'bright': lambda img: preproc.image.random_brightness(img, (0.00, 0.02)),
-        'shear': lambda img: preproc.image.random_shear(img, 0.1, fill_mode='reflect', **aug_kwargs),
-        'zoom': lambda img: preproc.image.random_zoom(img, (0.9, 1.1), fill_mode='reflect', **aug_kwargs),
-        'rotate': lambda img: preproc.image.random_rotation(img, 10, fill_mode='reflect', **aug_kwargs),
-        'hflip': lambda img: np.flip(img, axis=1) if np.random.choice([True, False]) else img,
+        'shear':   lambda img: preproc.random_shear(img, 0.1, fill_mode='reflect', **aug_kwargs),
+        'zoom':    lambda img: preproc.random_zoom(img, (0.9, 1.1), fill_mode='reflect', **aug_kwargs),
+        'rotate':  lambda img: preproc.random_rotation(img, 10, fill_mode='reflect', **aug_kwargs),
+        'channel': lambda img: preproc.random_channel_shift(img, 0.25, channel_axis=2),
+        'hflip':   lambda img: np.flip(img, axis=1) if np.random.choice([True, False]) else img,
+        'crop':    lambda img: ImageUtilities.random_crop(img)
     }
     
     @staticmethod
-    def load_image(fullpath):
+    def load_image(fullpath, preproc_func=lambda x: x / 255.):
         """
         The np.flip reverses the channels so that it matches matplotlib's native imshow
         """
-        out = np.flip(cv2.imread(fullpath) / 255., axis=-1)
+        out = preproc.img_to_array(preproc.load_img(fullpath))
+        out = preproc_func(out)
+        
         # All training images were resized down to smaller versions before training...
         if max(out.shape[:2]) > 512:
             ref_size = max(out.shape[:2])
@@ -47,19 +52,44 @@ class ImageUtilities:
         else:
             raise Exception(f'Invalid click count for rotation (0-3): {clicks}')
             
+            
     @staticmethod
-    def augment_image(img):
+    def random_crop(img):
+        # Randomly choose to crop the image, and if crop, randomly choose crop size and shift
+        h,w = img.shape[:2]
+        
+        # 1/3 chance we do no cropping (if not already square)
+        if h == w or np.random.choice([True, False], p=[0.33, 0.67]):
+            return img
+        
+        if h > w:
+            new_h = np.random.choice(range(w, h)) # random new height between full and square
+            max_offset = h - new_h
+            offset = np.random.choice(range(max_offset)) # random offset from top of image
+            return img[offset:offset+new_h, :, :]
+        else:
+            new_w = np.random.choice(range(h, w)) # random new width between full and square
+            max_offset = w - new_w
+            offset = np.random.choice(range(max_offset)) # random offset from left of image
+            return img[:, offset:offset+new_w, :]
+            
+            
+    @staticmethod
+    def augment_image(img, resize_to=None):
         """
         We most likely don't want to apply all augmentations to all images.
         We'll supply a list of augs we allow, and how many to randomly select
+        We apply augmentations in randomized order!
         """
         aug_keys = list(ImageUtilities.AUGMENTATIONS.keys())
         np.random.shuffle(aug_keys)
-        print(aug_keys)
         
         out = img
         for aug_name in aug_keys:
             out = ImageUtilities.AUGMENTATIONS[aug_name](out)
+            
+        if resize_to:
+            out = cv2.resize(out, resize_to)
         
         return out
 

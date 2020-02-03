@@ -12,6 +12,8 @@ class TrainDataInfo:
         '''
         Given a folder, index all images there and various statistics about them
         '''
+        if not os.path.isdir(train_folder):
+            raise NotADirectoryError(f'Folder "{train_folder}" does not exist')
         
         # This is a list of all the members we're going to have at the end of __init__
         self.filename_map = None

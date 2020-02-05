@@ -5,8 +5,10 @@ import sklearn
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras.applications import Xception
 from tensorflow.keras.applications.inception_v3 import preprocess_input as xcept_preproc
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from load_and_preprocess_data import TrainDataInfo
 from image_utilities import ImageUtilities
 from matplotlib.ticker import MaxNLocator
@@ -39,8 +41,8 @@ class TrainingUtils:
         
 
     def display_heatmaps(self, y_true, y_pred):
-        y_true_lbl = idx_to_lbl(y_true)
-        y_pred_lbl = idx_to_lbl(y_pred)
+        y_true_lbl = self.indices_to_labels_disp(y_true)
+        y_pred_lbl = self.indices_to_labels_disp(y_pred)
         fig,axs = plt.subplots(1,2, figsize=(16,6))
         cm = sklearn.metrics.confusion_matrix(y_true_lbl, y_pred_lbl)
         cm_norm = (cm.T / np.sum(cm, axis=1)).T
@@ -75,7 +77,7 @@ class TrainingUtils:
         train_split_index,
         img_size_2d,
         use_sample_weighting=False,
-        label_smoothing_value=0.0,
+        label_smoothing_value=0.05,
         preproc_func=lambda x: x):
 
         """
@@ -113,7 +115,7 @@ class TrainingUtils:
         train_split_index,
         img_size_2d,
         use_sample_weighting=False,
-        label_smoothing_value=0.0,
+        label_smoothing_value=0.05,
         preproc_func=lambda x: x):
     
         """
@@ -188,11 +190,12 @@ class TrainingUtils:
         test_split_index,
         img_size_3d,
         preproc_func,
-        batch_size=32):
+        batch_size=1):
         
         """
         This just iterates through all images, in order, on the test side of the split.
         No augmentation is applied to the test dataset
+        Default batch_size=1 because it avoids OOM problems, and it's not bad for 145 test images
         """
 
         def gen_func():
@@ -210,7 +213,7 @@ class TrainingUtils:
 
     
     # Iterate over all cross-val splits
-    def train_one_fold(self, model_gen_func, kfold_index, epochs=20, optimizer=None, model=None):
+    def train_one_fold(self, model_gen_func, kfold_index, epochs=20, optimizer=None, model=None, model_prefix=None):
         """
         Can pass in a pre
         """
@@ -222,11 +225,11 @@ class TrainingUtils:
             use_sample_weighting=True)
 
         train_ds = self.generator_to_dataset(gen, self.img_size_3d, self.num_countries, self.batch_size, with_sample_weighting=True)
-        test_ds = self.create_test_dataset(kfold_index, self.img_size_3d, xcept_preproc, self.batch_size//3)
+        test_ds = self.create_test_dataset(kfold_index, self.img_size_3d, xcept_preproc)
 
-        # Default ADAM optimizer with initial LR=0.001
+        # Default RMSprop optimizer with initial LR=0.001
         if optimizer is None:
-            optimizer = keras.optimizers.Adam(1e-3)
+            optimizer = keras.optimizers.RMSprop(3e-4)
 
         if model is None:
             print(f'Creating new model for fold {kfold_index}')
@@ -234,12 +237,25 @@ class TrainingUtils:
             model.compile(optimizer=optimizer,
                           loss='categorical_crossentropy',
                           metrics=['accuracy'])
+            
+        
+        model_prefix = 'weights'
+        if model_prefix:
+             model_prefix = model_prefix.rstrip('_')
+                
+        model_save_file = f'{model_prefix}_kfold_{kfold_index}.hdf5'
+        
+        early_stop = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='min')
+        mcp_save = ModelCheckpoint(model_save_file, save_best_only=True, monitor='val_loss', mode='min')
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.25, patience=3, verbose=1, mode='min')
 
         training_history = model.fit(
             x=train_ds,
             epochs=epochs,
-            validation_data=test_ds)
+            validation_data=test_ds,
+            callbacks=[mcp_save, reduce_lr])
 
+        model.load_weights(filepath = model_save_file)
         true_labels = []
         pred_labels = []
         for batch in test_ds:
@@ -256,7 +272,7 @@ class TrainingUtils:
         return model, true_labels, pred_labels, training_history
     
     
-    def train_eval_kfold_crossval(self, model_gen_func, epochs=20):
+    def train_eval_kfold_crossval(self, model_gen_func, epochs=20, model_prefix=None):
         """
         Input is a model that takes a batch of [_, 299, 299, 3] images & produces [_, 11] outputs
         """
@@ -264,7 +280,7 @@ class TrainingUtils:
         pred_labels = []
         hist = None
         for kfold_index in range(5):
-            model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs)
+            model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs, model_prefix)
 
             #print(f'Cross-val fold {kfold_index} confusion matrix:')
             #print(sklearn.metrics.confusion_matrix(fold_true, fold_pred))

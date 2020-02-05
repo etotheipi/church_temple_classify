@@ -21,7 +21,7 @@ class ImageUtilities:
     @staticmethod
     def load_image(fullpath, preproc_func=lambda x: x / 255.):
         """
-        The np.flip reverses the channels so that it matches matplotlib's native imshow
+        This loads and image from file, doing a couple of basic checks before
         """
         out = preproc.img_to_array(preproc.load_img(fullpath))
         out = preproc_func(out)
@@ -34,7 +34,7 @@ class ImageUtilities:
             new_sz1 = int(scale * out.shape[1])
             out = cv2.resize(out, (new_sz1, new_sz0))
             
-        return out
+        return out.astype('float32')
     
     @staticmethod
     def rotate_image_90deg(img, clicks):
@@ -77,9 +77,7 @@ class ImageUtilities:
     @staticmethod
     def augment_image(img, resize_to=None):
         """
-        We most likely don't want to apply all augmentations to all images.
-        We'll supply a list of augs we allow, and how many to randomly select
-        We apply augmentations in randomized order!
+        Apply all augmentations to each image, but in a randomized order
         """
         aug_keys = list(ImageUtilities.AUGMENTATIONS.keys())
         np.random.shuffle(aug_keys)

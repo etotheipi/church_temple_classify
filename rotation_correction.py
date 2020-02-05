@@ -9,12 +9,14 @@ from tensorflow.keras.applications import Xception
 from tensorflow.keras.applications.inception_v3 import preprocess_input
 
 class RotationCorrection:
-    def __init__(self, logreg_model_file='rotation_detect_xcept_logreg.clf'):
+    DEFAULT_MODEL_FILE = 'rotation_detect_xcept_logreg.clf'
+    
+    def __init__(self, logreg_model_file=None):
         """
         The logistic regression model will be downloaded from S3 if it doesn't exist locally (yet)
         """
         # I like to put all the members of the class at the top
-        self.model_file = logreg_model_file
+        self.model_file = logreg_model_file if logreg_model_file else self.DEFAULT_MODEL_FILE
         self.xception_no_head = None
         self.rotate_detector_head = None
         
@@ -22,7 +24,7 @@ class RotationCorrection:
         if self.model_file is None or not os.path.exists(self.model_file):
             # Download with wget (to avoid the caller needing boto3 library)
             try:
-                s3obj = 'https://acr-toptal-codingproj.s3.amazonaws.com/rotation_detect_xcept_logreg.clf'
+                s3obj = f'https://acr-toptal-codingproj.s3.amazonaws.com/{self.DEFAULT_MODEL_FILE}'
                 print(f'Attempting to download: {s3obj}')
                 subprocess.check_call(['wget', s3obj])
                 print(f'Successful!')

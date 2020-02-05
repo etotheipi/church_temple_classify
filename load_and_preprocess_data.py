@@ -37,6 +37,7 @@ class TrainDataInfo:
 
         # Sort all the names and counts, will do the same later sampling probs, wgts
         self.country_names = sorted(self.filename_map.keys())
+        self.country_names_disp = [n[:12] for n in self.country_names]
         self.country_counts = [len(self.filename_map[c]) for c in self.country_names]
         for country in self.country_names:
             self.filename_map[country] = sorted(self.filename_map[country])
@@ -53,7 +54,7 @@ class TrainDataInfo:
         # Precalculate the train-test splits, for k-fold cross val
         for i in range(kfold_splits):
             train,test = self._distributed_train_test_split(shards=kfold_splits, split_index=i)
-            self.traintest_splits.append((train, test))
+            self.traintest_splits.append({'train': train, 'test': test})
 
         
     # The vectors above are stored in country-name sorted order, even though filename_map
@@ -74,25 +75,27 @@ class TrainDataInfo:
         else:
             return np.random.choice(self.country_names, p=self.sampling_probs)
         
-    def sample_filename(self, file_map=None):
+    def sample_filename(self, train_or_test, kfold_index=0):
         """
         Use self.sampling_probs to get the correct country sampling rates
         File_map is the specific train or test split set, so use that to get the sample
+        
+        Returns sampled filename and the index of the country (from self.country_names)
         """
-        if file_map is None:
-            file_map = self.filename_map
+        assert train_or_test in ['train', 'test']
+        file_map = self.traintest_splits[kfold_index][train_or_test]
         
         country = self.sample_country()
         path_idx = np.random.choice(len(file_map[country]))
-        return file_map[country][path_idx]
+        return (file_map[country][path_idx], self.country_names.index(country))
         
-    def triplet_sample(self, file_map=None, uniform=False):
+    def sample_triplet_filenames(self, train_or_test, kfold_index=0, uniform=False):
         """
         Use self.sampling_probs to get the correct country sampling rates
         File_map is the specific train or test split set, so use that to get the sample
         """
-        if file_map is None:
-            file_map = self.filename_map
+        assert train_or_test in ['train', 'test']
+        file_map = self.traintest_splits[kfold_index][train_or_test]
         
         sprobs = self.sampling_probs
         if uniform:
@@ -165,32 +168,3 @@ class TrainDataInfo:
         axs[2].plot([-1, len(counts)], [1.0, 1.0], 'r-.')
         for tick in axs[2].get_xticklabels():
             tick.set_rotation(90)
-
-
-            
-'''
-def get_country_sample(n_country, names, sampling_probs, *, with_replace):
-    """
-    For triplet loss, need 2 no replacement; general training needs batch size w/ replacement
-    This should be called with names and probs from the master train_info object
-    """
-    if not with_replace and n_country > len(names):
-        raise Exception(f'Cannot take {n_country} samples w/o replacement, list size is {len(names)}')
-
-    idx_choice = np.random.choice(len(names), size=n_country, p=sampling_probs, replace=with_replace)
-
-    # We actually need to return the number of images to pull from each country
-    counts = Counter([names[i] for i in idx_choice])
-    return counts
-
-
-def get_image_fn_sample(fn_map, n_img, country, *, with_replace):
-    """
-    Given the filename mapping, select {n_img} images for the specified country
-    This should be called with training set of the split dataset
-    """
-    if not with_replace and n_img > len(fn_map[country]):
-        raise Exception(f'Cannot take {count} samples w/o replacement, list size is {len(names)}')
-
-    return np.random.choice(fn_map[country], size=n_img, replace=with_replace)
-'''

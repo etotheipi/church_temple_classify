@@ -6,6 +6,7 @@ import numpy as np
 import seaborn as sns
 import tensorflow as tf
 from tensorflow import keras
+from tensorflow.keras import layers as L
 from tensorflow.keras.applications import Xception
 from tensorflow.keras.applications.inception_v3 import preprocess_input as xcept_preproc
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
@@ -34,16 +35,15 @@ class TrainingUtils:
     
     
     def print_classification_report(self, y_true, y_pred):
-        if isinstance(y_true[0], (int, float)):
-            y_true = self.indices_to_labels(y_true)
-            y_pred = self.indices_to_labels(y_pred)
-        print(sklearn.metrics.classification_report(y_true, y_pred))
+        y_true_lbl = self.indices_to_labels(y_true)
+        y_pred_lbl = self.indices_to_labels(y_pred)
+        print(sklearn.metrics.classification_report(y_true_lbl, y_pred_lbl))
         
 
     def display_heatmaps(self, y_true, y_pred):
         y_true_lbl = self.indices_to_labels_disp(y_true)
         y_pred_lbl = self.indices_to_labels_disp(y_pred)
-        fig,axs = plt.subplots(1,2, figsize=(16,6))
+        fig,axs = plt.subplots(1,2, figsize=(16,8))
         cm = sklearn.metrics.confusion_matrix(y_true_lbl, y_pred_lbl)
         cm_norm = (cm.T / np.sum(cm, axis=1)).T
         sns.heatmap(cm, annot=True, ax=axs[0], linewidths=0.5, cbar=False)
@@ -53,11 +53,15 @@ class TrainingUtils:
             axs[i].set_xticklabels(self.train_info.country_names_disp)
             axs[i].set_yticks(np.arange(self.num_countries)+0.5)
             axs[i].set_yticklabels(self.train_info.country_names_disp)
+            axs[i].set_xlabel('Predicted Label')
+            axs[i].set_ylabel('Actual Label')
             axs[i].xaxis.set_ticks_position('top')
+            axs[i].xaxis.set_label_position('top')
             plt.setp(axs[i].get_xticklabels(), rotation=45, ha="left", rotation_mode="anchor")
             plt.setp(axs[i].get_yticklabels(), rotation=0, va="top") 
         axs[0].set_title('Confusion Matrix (Unscaled)')
         axs[1].set_title('Confusion Matrix (Normalized)')
+        fig.tight_layout(pad=3.0)
         
         
     def display_training_hist(self, hist):
@@ -189,7 +193,7 @@ class TrainingUtils:
     def create_test_dataset(self,
         test_split_index,
         img_size_3d,
-        preproc_func,
+        preproc_func=lambda x: x,
         batch_size=1):
         
         """
@@ -217,8 +221,7 @@ class TrainingUtils:
         """
         Can pass in a pre
         """
-        #gen = self.train_data_generator_disk(
-        gen = self.train_data_generator_memory(
+        gen = self.train_data_generator_disk(
             kfold_index,
             self.img_size_2d,
             preproc_func=xcept_preproc,
@@ -227,9 +230,9 @@ class TrainingUtils:
         train_ds = self.generator_to_dataset(gen, self.img_size_3d, self.num_countries, self.batch_size, with_sample_weighting=True)
         test_ds = self.create_test_dataset(kfold_index, self.img_size_3d, xcept_preproc)
 
-        # Default RMSprop optimizer with initial LR=0.001
+        # Default Nadam
         if optimizer is None:
-            optimizer = keras.optimizers.RMSprop(3e-4)
+            optimizer = keras.optimizers.Nadam(1e-4)
 
         if model is None:
             print(f'Creating new model for fold {kfold_index}')
@@ -239,15 +242,16 @@ class TrainingUtils:
                           metrics=['accuracy'])
             
         
-        model_prefix = 'weights'
         if model_prefix:
              model_prefix = model_prefix.rstrip('_')
+        else:
+            model_prefix = 'weights'
                 
         model_save_file = f'{model_prefix}_kfold_{kfold_index}.hdf5'
         
         early_stop = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='min')
         mcp_save = ModelCheckpoint(model_save_file, save_best_only=True, monitor='val_loss', mode='min')
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.25, patience=3, verbose=1, mode='min')
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.25, patience=8, verbose=1, mode='min')
 
         training_history = model.fit(
             x=train_ds,
@@ -266,9 +270,6 @@ class TrainingUtils:
 
         true_labels = np.concatenate(true_labels, axis=0)
         pred_labels = np.concatenate(pred_labels, axis=0)
-        print(f'Cross-val fold {kfold_index} confusion matrix:')
-        self.print_classification_report(true_labels, pred_labels)
-
         return model, true_labels, pred_labels, training_history
     
     
@@ -278,14 +279,72 @@ class TrainingUtils:
         """
         true_labels = []
         pred_labels = []
+        models = []
+        train_hist = []
         hist = None
         for kfold_index in range(5):
-            model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs, model_prefix)
+            model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs, model_prefix=model_prefix)
 
-            #print(f'Cross-val fold {kfold_index} confusion matrix:')
-            #print(sklearn.metrics.confusion_matrix(fold_true, fold_pred))
             true_labels.extend(fold_true)
             pred_labels.extend(fold_pred)
+            models.append(model)
+            train_hist.append(hist)
 
         # Returns last model and training_history, all true/pred labels for all images
-        return model, true_labels, pred_labels, hist
+        #self.display_training_hist(train_hist[-1])
+        return model, true_labels, pred_labels, train_hist
+    
+    
+    def create_feature_extractor_model(self, intermediate_layer_idxs=None):
+        if intermediate_layer_idxs is None:
+            intermediate_layer_idxs = [45, 65, 95]
+            
+        fex_base = Xception(weights='imagenet', include_top=False)
+        inp_layer = fex_base.layers[0].input
+        inner_layer_outputs = [fex_base.layers[l].output for l in intermediate_layer_idxs]
+        out_layer = fex_base.layers[-1].output
+
+        all_avg_outs = [L.GlobalAveragePooling2D()(lout) for lout in (inner_layer_outputs + [out_layer])]
+        combined = L.Concatenate(axis=-1)(all_avg_outs)
+
+        return keras.models.Model(inputs=inp_layer, outputs=combined)
+        
+        
+    def extract_features_to_disk(self, fex_model, train_ds, test_ds, out_file_prefix, train_repeat=6):
+        """
+        This will return integer classes (not one-hot-encoded)
+        If this uses the standard training-generator defined above, it will sample
+        the images according to the adjusted sampling distribution.  It's possible
+        not all images will be sampled
+        """
+        
+        img_wgts = None
+        features, labels = [], []
+        for batch in train_ds.repeat(train_repeat):
+            img_batch, img_lbls = batch
+                    
+            n_samples = img_batch.shape[0]
+            features.append(fex_model.predict_on_batch(img_batch).numpy().reshape([n_samples, -1]))
+            labels.append(img_lbls.numpy().reshape([n_samples, -1]))
+            
+        all_features = np.concatenate(features, axis=0)
+        all_labels = np.argmax(np.concatenate(labels, axis=0), axis=1)   
+        
+        print(f'Full set of training features and labels: {all_features.shape} and {all_labels.shape}')
+        np.save(f'{out_file_prefix}_train_features', all_features)
+        np.save(f'{out_file_prefix}_train_labels', all_labels)
+
+        
+        features, labels = [], []
+        for batch in test_ds:
+            img_batch, img_lbls = batch
+            n_samples = img_batch.shape[0]
+            features.append(fex_model.predict_on_batch(img_batch).numpy().reshape([n_samples, -1]))
+            labels.append(img_lbls.numpy().reshape([n_samples, -1]))
+            
+        all_features = np.concatenate(features, axis=0)
+        all_labels = np.argmax(np.concatenate(labels, axis=0), axis=1)   
+        
+        print(f'Full set of testing features and labels: {all_features.shape} and {all_labels.shape}')
+        np.save(f'{out_file_prefix}_test_features', all_features)
+        np.save(f'{out_file_prefix}_test_labels', all_labels)

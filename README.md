@@ -1,34 +1,20 @@
-# TopTal Data Science Project
-### Author: Alan Reiner
-### Date: Feb 13, 2020
+## TopTal Data Science Project
+__Author__: Alan Reiner 
 
-__TASK__: Given 714 images of chuches and temples in 11 different countries, train a classifier to try to predict the country from the image.
+__Date__: Feb 13, 2020
 
-__Challenges__: 
-1. Some images are rotated in increments of 90 degrees
-2. Some images are landscape, some are portrait.  Resizing to standard size (299,299) will result in dramatically different stretching of key features.
-3. Different aspect ratios and sizes
-4. __Very few__ training examples for some countries.  Armenia has only 11!  Many countries have between 30 and 60 examples
-5. Too much data to load into memory all at once for training
+### TASK
 
-## __Implemented Strategies__:
+Given 714 images of chuches and temples in 11 different countries, train a classifier to try to predict the country from the image.
 
-1. __Generators to Load Images from Disk During Training__: We don't pull all the images into memory because it's a ton of data.  Instead we created a tf.data.Dataset from a generator that reads the images from disk on-the-fly.  This is relatively slow, but likely necessary depending on the training environment.
-2. __Image Augmentations__:  See `load_and_preprocess_data.ipynb`.  Every time an image is loaded from disk, it goes through a randomized set of augmentations, including random cropping, shearing, zooming, channel shift, horizontal flipping.
-3. __Adjusted Sampling Rates__: Customize sampling rates from each country proportional to sqrt(N).  For instance, Russia has 11x as many images as Armenia, but will be sampled approximately 3.4x the rate of Armenia.
-4. __Imbalanced Sample/Class Weights__: Increase the training weights of classes with few samples (Armenia, Australia).  Combined with increased sampling rates, this means Armenia contributes almost as much to the batch/epoch loss as the countries with lots of images.
-6. __Add Intermediate Layer Outputs__:  In addition to using the standard 2048-output of Xception, we grab the outputs from multiple intermediate layer.  We need high-frequency image components since most pictures and even building structures are very similar, varying only by small deviations in shapes.  This is a similar technique as is used in style-transfer applications.
-5. __Transfer Learning from Pretrained Network__:  We use Xception pre-trained network, which has excellent imagenet performance and relatively small (20M parameters).  When you remove the top layer (1000 outputs), it emits a 10x10x2048 output for each image.  Use GlobalAvgPooling to produce a simple output of 2048 outputs.
-8. __Fine-Tuning__:  Fine-Tuning was critical because the Xception network was trained for a much different classification task than ours.  Adding intermediate layers made a huge difference in results, but are initially tailored for object identification.  We need the convolution kernels in earlier layers to adapt to this domain.
-7. __K-fold Cross-Validation__: Because there are so few images for some classes, it's just not possible to get reasonable performance metrics (such as Armenia with 11 images).  If we do k-fold cross-validation, we can at least get some idea on all 11 images (at the expense of training 5 models for each test)
-8. __Label Smoothing__: Because you should pretty much always do it for neural net classifiers...
-9. __(SKIPPED) Triple Loss Training__: This is likely a good strategy to try, since this task has similarities to face recognition -- small image count per class, subtle differences between images from different classes.
-
-## __Final Architecture__:
+## Final Architecture
 
 The final architecture is a fine-tuned Xception network, with three early-middle intermediate layers added to the output.  Given the limited size of the training dataset, we used only a 64-node hidden layer between that and the final logistic regression layer (fully-connected, dense layer with sigmoid activation).
 
 ![Final Model Architecture](imgs/final_architecture_diagram.png)
+
+
+## Final Results
 
 Here's a summary of model performance for a few different configurations, including the final configuration as shown above (FT~Fine-Tuned):
 
@@ -36,11 +22,11 @@ Here's a summary of model performance for a few different configurations, includ
 
 We put special emphasis on Armenia because there's only 11 images totals, which means that it is at risk of being ignored by the classifier.  As we can see, we achieve 100% precision and 55% recall with our final model, which is probably not much worse than a human would be able to do with the limited dataset.
 
-Here's the full confusion matrices (scaled and unscaled):
+Here's the full confusion matrices (unscaled and scaled):
 
 ![Confusion Matrices](imgs/fine_tuned_confusion_matrices.png)
 
-And the scikit-learn classification report of 5-fold cross-validation:
+And the scikit-learn classification report of the results from 5-fold cross-validation:
 
 ```
                   precision    recall  f1-score   support
@@ -62,10 +48,20 @@ And the scikit-learn classification report of 5-fold cross-validation:
     weighted avg       0.81      0.81      0.81       714
 ```
 
-And finally...
+## __Implemented Strategies__:
+
+1. __Generators to Load Images from Disk During Training__: Created a tf.data.Dataset from a generator that reads the images from disk on-the-fly.  This is relatively slow, but likely necessary depending on the training hardware.
+3. __Adjusted Sampling Rates__: Customize sampling rates from each country proportional to sqrt(N).  For instance, Russia has 11x as many images as Armenia, but will be sampled approximately 3.4x the rate of Armenia.
+4. __Imbalanced Sample/Class Weights__: Increase the training weights of classes with few samples (Armenia, Australia).  Combined with sampling rate adj, Armenia contributes almost as much to the (average) batch loss as the countries with lots of images.
+2. __Image Augmentations__:  Every time an image is loaded from disk, it goes through a randomized set of augmentations, including random cropping, shearing, zooming, channel shift, horizontal flipping.  See `load_and_preprocess_data.ipynb`.
+5. __Transfer Learning from Pretrained Network__:  We use Xception pre-trained network, which has excellent imagenet performance and relatively small (20M parameters).  When you remove the top layer (1000 outputs), it produces a 10x10x2048 output for each image.  Use GlobalAvgPooling to produce a simple output of 2048 outputs.
+6. __Add Intermediate Layer Outputs__:  In addition to the std 2048-output of Xception, we grab the outputs from multiple intermediate layer.  We need high-frequency image components since most pictures and even building structures are very similar, varying only by small deviations in shapes.  This is a similar technique as is used in style-transfer applications.
+8. __Fine-Tuning__:  Fine-Tuning was critical because the Xception network was trained for a much different classification task than ours.  Adding intermediate layers made a huge difference in results, but trained with convolution kernels appropriate for a different domain.
+7. __K-fold Cross-Validation__: Because there are so few images for some classes, it's just not possible to get reasonable performance metrics (such as Armenia with 11 images).  If we do k-fold cross-validation, we can at least get some idea on all 11 images (at the expense of training 5 models for each test)
+8. __Label Smoothing__: Because you should pretty much always do it for neural net classifiers...
+9. __(SKIPPED) Triple Loss Training__: This is likely a good strategy to try, since this task has similarities to face recognition -- small image count per class, subtle differences between images from different classes.
 
 ## __Accommodating Imbalanced Sample Sizes__:
-
 
 We accomodate the high imbalance in two phases.  First, training is done purely via sampling from the training set (with on-the-fly augmentation).  We adjust the sampling rates by $\sqrt{N}$, to make sure the countries with fewer images are sampled more frequently.  Second, we apply class weights during training proportional to $\frac{1}{\sqrt{N}}$ to also increase the weights of these minority classes.
 

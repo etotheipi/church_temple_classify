@@ -12,7 +12,7 @@ class ImageUtilities:
     AUGMENTATIONS = {
         'shear':   lambda img: preproc.random_shear(img, 0.1, fill_mode='reflect', **aug_kwargs),
         'zoom':    lambda img: preproc.random_zoom(img, (0.9, 1.1), fill_mode='reflect', **aug_kwargs),
-        'rotate':  lambda img: preproc.random_rotation(img, 10, fill_mode='reflect', **aug_kwargs),
+        'rotate':  lambda img: preproc.random_rotation(img, 12, fill_mode='reflect', **aug_kwargs),
         'channel': lambda img: preproc.random_channel_shift(img, 0.25, channel_axis=2),
         'hflip':   lambda img: np.flip(img, axis=1) if np.random.choice([True, False]) else img,
         'crop':    lambda img: ImageUtilities.random_crop(img)

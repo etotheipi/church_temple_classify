@@ -69,10 +69,14 @@ class TrainingUtils:
         axs[0].plot(hist.history['loss'], label='Training Loss')
         axs[0].plot(hist.history['val_loss'], label='Testing Loss')
         axs[0].set_ylim(bottom=0)
+        axs[0].set_xlabel('Epochs')
+        axs[0].set_ylabel('Loss')
         axs[0].legend()
         axs[1].plot(hist.history['accuracy'], label='Training accuracy')
         axs[1].plot(hist.history['val_accuracy'], label='Testing accuracy')
         axs[1].set_ylim([-0.05, 1.05])
+        axs[0].set_xlabel('Epochs')
+        axs[0].set_ylabel('Accuracy')
         axs[1].legend()
         axs[0].xaxis.set_major_locator(MaxNLocator(integer=True))
         
@@ -232,7 +236,7 @@ class TrainingUtils:
 
         # Default Nadam
         if optimizer is None:
-            optimizer = keras.optimizers.Nadam(1e-4)
+            optimizer = keras.optimizers.Nadam(2e-4)
 
         if model is None:
             print(f'Creating new model for fold {kfold_index}')
@@ -251,7 +255,7 @@ class TrainingUtils:
         
         early_stop = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='min')
         mcp_save = ModelCheckpoint(model_save_file, save_best_only=True, monitor='val_loss', mode='min')
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.25, patience=8, verbose=1, mode='min')
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.4, patience=6, verbose=1, mode='min')
 
         training_history = model.fit(
             x=train_ds,
@@ -260,6 +264,27 @@ class TrainingUtils:
             callbacks=[mcp_save, reduce_lr])
 
         model.load_weights(filepath = model_save_file)
+        
+        ##########################################################################
+        # FINE-TUNING
+        print('Start fine-tuning...')
+        for layer in model.layers[40:]:
+            layer.trainable = True
+            
+        model.compile(optimizer=keras.optimizers.Nadam(3e-5),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'])
+        
+        mcp_save = ModelCheckpoint(f'{model_prefix}_finetuned_{kfold_index}.hdf5', save_best_only=True, monitor='val_loss', mode='min')
+        ft_epochs = epochs + 20
+        training_history = model.fit(
+            x=train_ds,
+            validation_data=test_ds,
+            epochs=ft_epochs,
+            initial_epoch=training_history.epoch[-1],
+            callbacks=[mcp_save, reduce_lr])
+        ##########################################################################
+        
         true_labels = []
         pred_labels = []
         for batch in test_ds:
@@ -285,14 +310,12 @@ class TrainingUtils:
         for kfold_index in range(5):
             model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs, model_prefix=model_prefix)
 
+            models.append(model)
             true_labels.extend(fold_true)
             pred_labels.extend(fold_pred)
-            models.append(model)
             train_hist.append(hist)
 
-        # Returns last model and training_history, all true/pred labels for all images
-        #self.display_training_hist(train_hist[-1])
-        return model, true_labels, pred_labels, train_hist
+        return models, true_labels, pred_labels, train_hist
     
     
     def create_feature_extractor_model(self, intermediate_layer_idxs=None):

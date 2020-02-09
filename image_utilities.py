@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.preprocessing import image as preproc
+from tensorflow.keras.preprocessing import image as keras_preproc
 
 aug_kwargs = {'row_axis': 0, 'col_axis': 1, 'channel_axis': 2}
 class ImageUtilities:
@@ -10,10 +10,10 @@ class ImageUtilities:
     
     # All augmentations should be called for all images.  Must have randomness built-in
     AUGMENTATIONS = {
-        'shear':   lambda img: preproc.random_shear(img, 0.1, fill_mode='reflect', **aug_kwargs),
-        'zoom':    lambda img: preproc.random_zoom(img, (0.9, 1.1), fill_mode='reflect', **aug_kwargs),
-        'rotate':  lambda img: preproc.random_rotation(img, 12, fill_mode='reflect', **aug_kwargs),
-        'channel': lambda img: preproc.random_channel_shift(img, 0.25, channel_axis=2),
+        'shear':   lambda img: keras_preproc.random_shear(img, 0.1, fill_mode='reflect', **aug_kwargs),
+        'zoom':    lambda img: keras_preproc.random_zoom(img, (0.9, 1.1), fill_mode='reflect', **aug_kwargs),
+        'rotate':  lambda img: keras_preproc.random_rotation(img, 12, fill_mode='reflect', **aug_kwargs),
+        'channel': lambda img: keras_preproc.random_channel_shift(img, 0.25, channel_axis=2),
         'hflip':   lambda img: np.flip(img, axis=1) if np.random.choice([True, False]) else img,
         'crop':    lambda img: ImageUtilities.random_crop(img)
     }
@@ -23,7 +23,7 @@ class ImageUtilities:
         """
         This loads and image from file, doing a couple of basic checks before
         """
-        out = preproc.img_to_array(preproc.load_img(fullpath))
+        out = keras_preproc.img_to_array(keras_preproc.load_img(fullpath))
         out = preproc_func(out)
         
         # All training images were resized down to smaller versions before training...

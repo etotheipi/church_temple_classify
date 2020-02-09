@@ -11,20 +11,20 @@ Given 714 images of chuches and temples in 11 different countries, train a class
 
 The final architecture is a fine-tuned Xception network, with three early-middle intermediate layers added to the output.  Given the limited size of the training dataset, we used only a 64-node hidden layer between that and the final logistic regression layer (fully-connected, dense layer with sigmoid activation).
 
-![Final Model Architecture](imgs/final_architecture_diagram.png)
+![Final Model Architecture](present_imgs/final_architecture_diagram.png)
 
 
 ## Final Results
 
 Here's a summary of model performance for a few different configurations, including the final configuration as shown above (FT~Fine-Tuned):
 
-![Final Results](imgs/results_table.png)
+![Final Results](present_imgs/results_table.png)
 
 We put special emphasis on Armenia because there's only 11 images totals, which means that it is at risk of being ignored by the classifier.  As we can see, we achieve 100% precision and 55% recall with our final model, which is probably not much worse than a human would be able to do with the limited dataset.
 
 Here's the full confusion matrices (unscaled and scaled):
 
-![Confusion Matrices](imgs/fine_tuned_confusion_matrices.png)
+![Confusion Matrices](present_imgs/fine_tuned_confusion_matrices.png)
 
 And the scikit-learn classification report of the results from 5-fold cross-validation:
 
@@ -69,7 +69,7 @@ We accomodate the high imbalance in two phases.  First, training is done purely 
 * Russia is sampled only 3.4x times as often as Armenia 
 * Losses from Russia images are multiplied by 0.8, while Armenia images are 2.1
 
-![Image Counts and Adj. Sampling Rates/Weights](imgs/img_counts_probs_wgts.png)
+![Image Counts and Adj. Sampling Rates/Weights](present_imgs/img_counts_probs_wgts.png)
 
 ## __Image Augmentations__:
 
@@ -81,7 +81,7 @@ Every time an image is loaded for training, it is read directly from disk and pa
 5. __Rotation__:  Using tf.keras.preprocessing.image, a random image rotation +/- 15 deg, with `reflect` for filling empty pixels
 
 
-![Samples of Fully-Augmented Images used in Training](imgs/img_augmentations_example.png)
+![Samples of Fully-Augmented Images used in Training](present_imgs/img_augmentations_example.png)
 
 
 

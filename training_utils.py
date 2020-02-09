@@ -14,7 +14,7 @@ from load_and_preprocess_data import TrainDataInfo
 from image_utilities import ImageUtilities
 from matplotlib.ticker import MaxNLocator
 
-# This is a light wrapper that holds the TrainDataInfo object, and has some basic utils
+# This is a wrapper that holds a TrainDataInfo object, implements some useful methods with it
 class TrainingUtils:
     def __init__(self, all_train_info, img_size_3d, batch_size):
         self.train_info = all_train_info
@@ -35,12 +35,18 @@ class TrainingUtils:
     
     
     def print_classification_report(self, y_true, y_pred):
+        '''
+        This avoids the need to manually convert indices to str labels
+        '''
         y_true_lbl = self.indices_to_labels(y_true)
         y_pred_lbl = self.indices_to_labels(y_pred)
         print(sklearn.metrics.classification_report(y_true_lbl, y_pred_lbl))
         
 
     def display_heatmaps(self, y_true, y_pred):
+        '''
+        Creates the visual confusion matrix
+        '''
         y_true_lbl = self.indices_to_labels_disp(y_true)
         y_pred_lbl = self.indices_to_labels_disp(y_pred)
         fig,axs = plt.subplots(1,2, figsize=(16,8))
@@ -65,20 +71,28 @@ class TrainingUtils:
         
         
     def display_training_hist(self, hist):
+        '''
+        Pretty straightforward plotting training history from a .fit() call
+        '''
         fig, axs = plt.subplots(1,2, figsize=(12,6))
+        
         axs[0].plot(hist.history['loss'], label='Training Loss')
         axs[0].plot(hist.history['val_loss'], label='Testing Loss')
         axs[0].set_ylim(bottom=0)
         axs[0].set_xlabel('Epochs')
         axs[0].set_ylabel('Loss')
+        axs[0].set_title('Training Loss')
         axs[0].legend()
+        axs[0].xaxis.set_major_locator(MaxNLocator(integer=True))
+        
         axs[1].plot(hist.history['accuracy'], label='Training accuracy')
         axs[1].plot(hist.history['val_accuracy'], label='Testing accuracy')
         axs[1].set_ylim([-0.05, 1.05])
-        axs[0].set_xlabel('Epochs')
-        axs[0].set_ylabel('Accuracy')
+        axs[1].set_xlabel('Epochs')
+        axs[1].set_ylabel('Accuracy')
+        axs[1].set_title('Training Accuracy')
         axs[1].legend()
-        axs[0].xaxis.set_major_locator(MaxNLocator(integer=True))
+        axs[1].xaxis.set_major_locator(MaxNLocator(integer=True))
         
         
     def train_data_generator_disk(self,
@@ -89,10 +103,10 @@ class TrainingUtils:
         preproc_func=lambda x: x):
 
         """
-        The train_info object has indexed all the filenames for all available data. 
+        The train_info object has indexed all the filenames for all available images. 
         It has precomputed sampling probabilities, sample weights, and train-test splits
-        Supply label_smoothing_value=0 to disable it
-        For preproc_func we'll supply the inception_v3 preprocess_inputs function
+        For preproc_func we'll supply the inception_v3 preprocess_inputs function (which
+        is the same preprocess function as Xception)
         """
 
         def out_generator():
@@ -128,13 +142,10 @@ class TrainingUtils:
     
         """
         This method is same as above, but loads all training images into memory (before
-        augmentation).  This is pretty heavy for most systems, thus the previous version
-        that loads from disk on-the-fly is available and tested.
-
-        The train_info object has indexed all the filenames for all available data. 
-        It has precomputed sampling probabilities, sample weights, and train-test splits
-        Supply label_smoothing_value=0 to disable it
-        For preproc_func we'll supply the inception_v3 preprocess_inputs function
+        augmentation).  This is pretty heavy for most systems, but I assumed it would be
+        faster than the disk version.  In hindsight, I think most of the computation is
+        resizing and augmentations, so it doesn't make a big difference even if you have
+        the RAM.
         """
 
         file_map = self.train_info.traintest_splits[train_split_index]['train']
@@ -175,7 +186,8 @@ class TrainingUtils:
         
         """
         Take a generator produced above and wrap it in a tf.data.Dataset.  
-        from_generator requires and image size, hence why it is passed in again.
+        Dataset.from_generator requires and image size, hence why it is passed in again.
+        We accommodate per-sample weighting, if the input flag is passed.
         """
         if with_sample_weighting:
             out_dataset = tf.data.Dataset.from_generator( 
@@ -203,7 +215,8 @@ class TrainingUtils:
         """
         This just iterates through all images, in order, on the test side of the split.
         No augmentation is applied to the test dataset
-        Default batch_size=1 because it avoids OOM problems, and it's not bad for 145 test images
+        Default batch_size=1 because it avoids OOM problems, and batch size is irrelevant
+        for ~150 testing images
         """
 
         def gen_func():
@@ -221,10 +234,19 @@ class TrainingUtils:
 
     
     # Iterate over all cross-val splits
-    def train_one_fold(self, model_gen_func, kfold_index, epochs=20, optimizer=None, model=None, model_prefix=None):
+    def train_one_fold(self,
+        model_gen_func,
+        kfold_index,
+        epochs=40,
+        finetine_epochs=20,
+        optimizer=None,
+        model=None,
+        model_prefix=None):
         """
-        Can pass in a pre
+        This trains a fresh new model with train-test data specified by the TrainDataInfo object
+        and the requested k-fold index.  Fine-tuning
         """
+        
         gen = self.train_data_generator_disk(
             kfold_index,
             self.img_size_2d,
@@ -246,14 +268,8 @@ class TrainingUtils:
                           metrics=['accuracy'])
             
         
-        if model_prefix:
-             model_prefix = model_prefix.rstrip('_')
-        else:
-            model_prefix = 'weights'
-                
+        model_prefix = model_prefix.rstrip('_') if model_prefix else 'weights'
         model_save_file = f'{model_prefix}_kfold_{kfold_index}.hdf5'
-        
-        early_stop = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='min')
         mcp_save = ModelCheckpoint(model_save_file, save_best_only=True, monitor='val_loss', mode='min')
         reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.4, patience=6, verbose=1, mode='min')
 
@@ -263,27 +279,27 @@ class TrainingUtils:
             validation_data=test_ds,
             callbacks=[mcp_save, reduce_lr])
 
+        # Load the checkpoint that mcp_save deteremined was best (based on loss)
         model.load_weights(filepath = model_save_file)
         
-        ##########################################################################
-        # FINE-TUNING
-        print('Start fine-tuning...')
-        for layer in model.layers[40:]:
-            layer.trainable = True
-            
-        model.compile(optimizer=keras.optimizers.Nadam(3e-5),
-                      loss='categorical_crossentropy',
-                      metrics=['accuracy'])
-        
-        mcp_save = ModelCheckpoint(f'{model_prefix}_finetuned_{kfold_index}.hdf5', save_best_only=True, monitor='val_loss', mode='min')
-        ft_epochs = epochs + 20
-        training_history = model.fit(
-            x=train_ds,
-            validation_data=test_ds,
-            epochs=ft_epochs,
-            initial_epoch=training_history.epoch[-1],
-            callbacks=[mcp_save, reduce_lr])
-        ##########################################################################
+        # Now fine-tune if it was requested.  Of the 132 layers
+        if finetune_epochs:
+            print('Start fine-tuning...')
+            for layer in model.layers[40:]:
+                layer.trainable = True
+
+            model.compile(optimizer=keras.optimizers.Nadam(3e-5),
+                          loss='categorical_crossentropy',
+                          metrics=['accuracy'])
+
+            mcp_save = ModelCheckpoint(f'{model_prefix}_finetuned_{kfold_index}.hdf5', save_best_only=True, monitor='val_loss', mode='min')
+            ft_epochs = epochs + finetune_epochs
+            training_history = model.fit(
+                x=train_ds,
+                validation_data=test_ds,
+                epochs=ft_epochs,
+                initial_epoch=training_history.epoch[-1],
+                callbacks=[mcp_save, reduce_lr])
         
         true_labels = []
         pred_labels = []
@@ -300,13 +316,12 @@ class TrainingUtils:
     
     def train_eval_kfold_crossval(self, model_gen_func, epochs=20, model_prefix=None):
         """
-        Input is a model that takes a batch of [_, 299, 299, 3] images & produces [_, 11] outputs
+        Run train_one_fold N times, once for each train-test split (hardcoded N=5)
         """
         true_labels = []
         pred_labels = []
         models = []
         train_hist = []
-        hist = None
         for kfold_index in range(5):
             model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs, model_prefix=model_prefix)
 
@@ -319,6 +334,13 @@ class TrainingUtils:
     
     
     def create_feature_extractor_model(self, intermediate_layer_idxs=None):
+        '''
+        Method sets up a default Xception network with access to intermediate-layer
+        output, and will be used to pre-extract features into numpy arrays on disk
+        that can be loaded in a separate process (std_ml_on_xcept_features.py), 
+        and we can try different ML techniques on it without having to process
+        images.
+        '''
         if intermediate_layer_idxs is None:
             intermediate_layer_idxs = [45, 65, 95]
             
@@ -335,7 +357,7 @@ class TrainingUtils:
         
     def extract_features_to_disk(self, fex_model, train_ds, test_ds, out_file_prefix, train_repeat=6):
         """
-        This will return integer classes (not one-hot-encoded)
+        Labels will be integer classes (not one-hot-encoded)
         If this uses the standard training-generator defined above, it will sample
         the images according to the adjusted sampling distribution.  It's possible
         not all images will be sampled

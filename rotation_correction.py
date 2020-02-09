@@ -63,7 +63,7 @@ class RotationCorrection:
         
         num_clicks = self.rotate_detector_head.predict(xcept_out)[0]
         if num_clicks > 0:
-            print(f'Image {img.shape} was rotated {num_clicks} clicks.  Rotating it to normal orientation.')
+            print(f'Image was rotated {num_clicks} clicks.  Rotating it to normal orientation.')
             img = np.squeeze(img, axis=0)
             img = ImageUtilities.rotate_image_90deg(img, -num_clicks)
             

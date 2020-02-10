@@ -238,7 +238,7 @@ class TrainingUtils:
         model_gen_func,
         kfold_index,
         epochs=40,
-        finetine_epochs=20,
+        finetune_epochs=20,
         optimizer=None,
         model=None,
         model_prefix=None):
@@ -314,16 +314,26 @@ class TrainingUtils:
         return model, true_labels, pred_labels, training_history
     
     
-    def train_eval_kfold_crossval(self, model_gen_func, epochs=20, model_prefix=None):
+    def train_eval_kfold_crossval(self,
+        model_gen_func,
+        epochs=40,
+        finetune_epochs=0,
+        model_prefix=None):
         """
         Run train_one_fold N times, once for each train-test split (hardcoded N=5)
         """
+        
         true_labels = []
         pred_labels = []
         models = []
         train_hist = []
         for kfold_index in range(5):
-            model, fold_true, fold_pred, hist = self.train_one_fold(model_gen_func, kfold_index, epochs, model_prefix=model_prefix)
+            model, fold_true, fold_pred, hist = self.train_one_fold(
+                model_gen_func,
+                kfold_index,
+                epochs,
+                finetune_epochs,
+                model_prefix=model_prefix)
 
             models.append(model)
             true_labels.extend(fold_true)

@@ -40,7 +40,7 @@ class RotationCorrection:
             self.rotate_detector_head = pickle.load(fread)
         
         
-    def fix_one_image(self, img):
+    def fix_one_image(self, img, quiet=False):
         """
         This assumes you've already applied the preprocessing function to it
         """
@@ -63,7 +63,8 @@ class RotationCorrection:
         
         num_clicks = self.rotate_detector_head.predict(xcept_out)[0]
         if num_clicks > 0:
-            print(f'Image was rotated {num_clicks} clicks.  Rotating it to normal orientation.')
+            if not quiet:
+                print(f'Image was rotated {num_clicks} clicks.  Rotating it to normal orientation.')
             img = np.squeeze(img, axis=0)
             img = ImageUtilities.rotate_image_90deg(img, -num_clicks)
             

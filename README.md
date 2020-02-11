@@ -81,7 +81,7 @@ Class imbalance is addressed in two ways:
 1. Training is done purely via sampling from the training set (with on-the-fly augmentation).  Sampling rates are adjusted by $\sqrt{N}$, which increases the sampling rate of countries with low images counts, relative to the other classes. 
 2. Class/sample weights are used in training, proportional to $\frac{1}{\sqrt{N}}$ to also increase the weights of these minority classes.
 
-The end
+The end result is that all classes approximately contribute the same amount to the loss optimization in each epoch.  This is probably a bit aggressive, but feasible due to the augmentation.
 
 * Russia has 11.3x times as many images as Armenia
 * Russia is sampled only 3.4x times as often as Armenia 
@@ -92,9 +92,9 @@ The end
 ## __Image Augmentations__:
 
 Every time an image is loaded for training, it is read directly from disk and passed through the methods in `image_utilities.py`, which add five randomized augmentations.  The parameters of the augmentations are randomized each time, and the *order* of the augmentations is also randomized.  At the end the images are resized to the target shape, `(299, 299, 3)`.  The five augmentations are:
-1. __Random Cropping__:  We crop the longest dimension somewhere between perfect square and no cropping.  If there is cropping, it's has a randomized offset from the top (portrait) or left (landscape) edge of the image
-2. __Shear__:  Using tf.keras.preprocessing.image, we apply up to a +/- 15 deg shearing to each image
-3. __Zoom__:  Using tf.keras.preprocessing.image, we apply up to a +/- 10% zoom to the image.  The range is small because cropping is also removing part of the image, don't want to lose too much
+1. __Random Cropping__:  Image is cropped in the longest dimension somewhere between perfect square and no cropping.  If there is cropping, it has a randomized offset from the top (portrait) or left (landscape) edge of the image
+2. __Shear__:  Using tf.keras.preprocessing.image, apply up to a +/- 15 deg shearing to each image
+3. __Zoom__:  Using tf.keras.preprocessing.image, apply up to a +/- 10% zoom to the image.  The range is small because cropping is also removing part of the image, don't want to lose too much
 4. __Channel Shift__:  Using tf.keras.preprocessing.image, a random channel shift, +/- 25%
 5. __Rotation__:  Using tf.keras.preprocessing.image, a random image rotation +/- 15 deg, with `reflect` for filling empty pixels
 
@@ -136,7 +136,7 @@ $ deactivate
 $ rm -rf areiner_proj_env
 ```
 
-It will print the output .csv filename when it is done.  Alternatively, you run the model using the `ApplyFinalClassifier.ipynb` notebook, which will also display some extra info.
+It will print the output .csv filename when it is done.  Alternatively, you can run the model using the `ApplyFinalClassifier.ipynb` notebook, which will also print some statistics and display some high- and low-confidence results from the specified directory.
 
 
 

@@ -93,6 +93,7 @@ class TrainingUtils:
         axs[1].set_title('Training Accuracy')
         axs[1].legend()
         axs[1].xaxis.set_major_locator(MaxNLocator(integer=True))
+        return fig, axs
         
         
     def train_data_generator_disk(self,
@@ -137,7 +138,7 @@ class TrainingUtils:
         train_split_index,
         img_size_2d,
         use_sample_weighting=False,
-        label_smoothing_value=0.05,
+        label_smoothing_value=0.10,
         preproc_func=lambda x: x):
     
         """
@@ -294,12 +295,15 @@ class TrainingUtils:
 
             mcp_save = ModelCheckpoint(f'{model_prefix}_finetuned_{kfold_index}.hdf5', save_best_only=True, monitor='val_loss', mode='min')
             ft_epochs = epochs + finetune_epochs
-            training_history = model.fit(
+            ft_history = model.fit(
                 x=train_ds,
                 validation_data=test_ds,
                 epochs=ft_epochs,
                 initial_epoch=training_history.epoch[-1],
                 callbacks=[mcp_save, reduce_lr])
+            
+        for metric in ['loss', 'accuracy', 'val_loss', 'val_accuracy']:
+            training_history.history[metric].extend(ft_history.history[metric])
         
         true_labels = []
         pred_labels = []
